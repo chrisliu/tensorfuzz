@@ -57,10 +57,10 @@ class Fuzzer(object):
 
     def loop(self, iterations):
         """Fuzzes a machine learning model in a loop, making *iterations* steps."""
-
+        # iterations number define by people
         for iteration in range(iterations):
             if iteration % 100 == 0:
-                tf.logging.info("fuzzing iteration: %s", iteration)
+                tf.compat.v1.logging.info("fuzzing iteration: %s", iteration)
             parent = self.corpus.sample_input()
 
             # Get a mutated batch for each input tensor
@@ -87,7 +87,7 @@ class Fuzzer(object):
                     parent,
                 )
                 if self.objective_function(new_element):
-                    return new_element
+                    return new_element  # find crash seed once
                 self.corpus.maybe_add_to_corpus(new_element)
 
         return None
