@@ -79,7 +79,7 @@ def seed_corpus_from_numpy_arrays(
     for input_array_list in numpy_arrays:
         input_batches = []
         for input_array in input_array_list:
-            input_batches.append(np.expand_dims(input_array, axis=0))
+            input_batches.append(np.expand_dims(input_array, axis=0))  # row
         coverage_batches, metadata_batches = fetch_function(input_batches)
         coverage_list = coverage_function(coverage_batches)
         metadata_list = metadata_function(metadata_batches)
@@ -102,7 +102,7 @@ class Updater(object):
         Returns:
           Initialized object.
         """
-        self.flann = pyflann.FLANN()
+        self.flann = pyflann.FLANN()  # pypi package
         self.threshold = threshold
         self.algorithm = algorithm
         self.corpus_buffer = []
@@ -122,7 +122,7 @@ class Updater(object):
             [element.coverage for element in corpus_object.corpus]
         )
         self.flann.build_index(self.lookup_array, algorithm=self.algorithm)
-        tf.logging.info("Flushing buffer and building index.")
+        tf.compat.v1.logging.info("Flushing buffer and building index.")
 
     def update_function(self, corpus_object, element):
         """Checks if coverage is new and updates corpus if so.
@@ -153,16 +153,20 @@ class Updater(object):
             ]
             nearest_distance = min(exact_distances + approx_distances.tolist())
             if nearest_distance > self.threshold:
-                tf.logging.info(
+                tf.compat.v1.logging.info(
                     "corpus_size %s mutations_processed %s",
                     len(corpus_object.corpus),
                     corpus_object.mutations_processed,
                 )
-                tf.logging.info(
+                tf.compat.v1.logging.info(
                     "coverage: %s, metadata: %s",
                     element.coverage,
                     element.metadata,
                 )
+                # with open("log.txt", "w+") as myfile:
+                #     line = "coverage: {0}, metadata: {1}".format(element.coverage, element.metadata)
+                #     myfile.write(str(line))
+                #     myfile.close()
                 corpus_object.corpus.append(element)
                 self.corpus_buffer.append(element.coverage)
                 if len(self.corpus_buffer) >= _BUFFER_SIZE:
@@ -189,7 +193,7 @@ class InputCorpus(object):
         self.start_time = time.time()
         self.current_time = time.time()
         self.log_time = time.time()
-        self.updater = Updater(threshold, algorithm)
+        self.updater = Updater(threshold, algorithm)  # threshold set by yourself
 
         for corpus_element in seed_corpus:
             self.maybe_add_to_corpus(corpus_element)
@@ -201,7 +205,7 @@ class InputCorpus(object):
         current_time = time.time()
         if current_time - self.log_time > 10:
             self.log_time = current_time
-            tf.logging.info(
+            tf.compat.v1.logging.info(
                 "mutations_per_second: %s",
                 float(self.mutations_processed)
                 / (current_time - self.start_time),
@@ -210,4 +214,5 @@ class InputCorpus(object):
     def sample_input(self):
         """Grabs new input from corpus according to sample_function."""
         choice = self.sample_function(self)
+        # a function
         return choice
