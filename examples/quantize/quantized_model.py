@@ -19,12 +19,13 @@ from __future__ import print_function
 
 import os
 import lib.dataset as mnist
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 
 
 tf.flags.DEFINE_string(
     "checkpoint_dir",
-    "/tmp/nanfuzzer",
+    "./tmp/quantized_checkpoints",
     "The overall dir in which we store experiments",
 )
 tf.flags.DEFINE_string(
@@ -56,7 +57,8 @@ def main(_):
 
     dataset = mnist.train(FLAGS.data_dir)
     dataset = dataset.cache().shuffle(buffer_size=50000).batch(100).repeat()
-    iterator = dataset.make_one_shot_iterator()
+    # iterator = dataset.make_one_shot_iterator()
+    iterator = tf.data.make_one_shot_iterator(dataset)
     images, integer_labels = iterator.get_next()
     images = tf.reshape(images, [-1, 28, 28, 1])
     images = tf.identity(images)
