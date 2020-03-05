@@ -122,4 +122,4 @@ def main(_):
             tf.logging.info("Fuzzing failed to satisfy objective function.")
 
 if __name__ == "__main__":
-    tf.app.run()
+    tf.compat.v1.app.run()
