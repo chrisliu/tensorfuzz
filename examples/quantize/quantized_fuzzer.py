@@ -17,7 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from lib import fuzz_utils
 from lib.corpus import InputCorpus
 from lib.corpus import seed_corpus_from_numpy_arrays
@@ -28,19 +29,22 @@ from lib.sample_functions import recent_sample_function
 
 
 tf.flags.DEFINE_string(
-    "checkpoint_dir", None, "Dir containing checkpoints of model to fuzz."
+    "checkpoint_dir", "./tmp/quantized_checkpoints", "Dir containing checkpoints of model to fuzz."
 )
 tf.flags.DEFINE_string(
-    "output_path", None, "Where to write the satisfying output."
+    "output_path", "./tmp/plots/quantized_image.png", "Where to write the satisfying output."
 )
 tf.flags.DEFINE_integer(
-    "total_inputs_to_fuzz", 100, "Loops over the whole corpus."
+    "total_inputs_to_fuzz", 10000, "Loops over the whole corpus."
 )
 tf.flags.DEFINE_integer(
     "mutations_per_corpus_item", 100, "Number of times to mutate corpus item."
 )
 tf.flags.DEFINE_float(
-    "perturbation_constraint", None, "Constraint on norm of perturbations."
+    "perturbation_constraint", 1.0, "Constraint on norm of perturbations."
+)
+tf.flags.DEFINE_string(
+    "strategy", "ann", "Distance calculate algorithm."
 )
 tf.flags.DEFINE_float(
     "ann_threshold",
@@ -94,7 +98,8 @@ def main(_):
     numpy_arrays = [[image, label]]
     image_copy = image[:]
 
-    with tf.Session() as sess:
+    with tf.Graph().as_default() as g:
+        sess = tf.Session()
 
         tensor_map = fuzz_utils.get_tensors_from_checkpoint(
             sess, FLAGS.checkpoint_dir
