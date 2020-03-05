@@ -11,13 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Fuzz functions from a public DCGAN implementation."""
+# """Fuzz functions from a public DCGAN implementation."""
+# """Change code to the tensorflow 2.1 version"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from lib.fuzz_utils import build_fetch_function
 from lib.corpus import InputCorpus
 from lib.corpus import seed_corpus_from_numpy_arrays
@@ -27,17 +29,19 @@ from lib.mutation_functions import do_basic_mutations
 from lib.sample_functions import uniform_sample_function
 from third_party.dcgan.ops import binary_cross_entropy_with_logits
 
-tf.flags.DEFINE_integer("total_inputs_to_fuzz", 100, "Number of mutations.")
+tf.flags.DEFINE_integer("total_inputs_to_fuzz", 500, "Number of mutations.")
 tf.flags.DEFINE_integer(
     "mutations_per_corpus_item", 64, "Number of times to mutate corpus item."
 )
 tf.flags.DEFINE_float(
     "ann_threshold",
-    1.0,
+    0.1,
     "Distance below which we consider something new coverage.",
 )
+tf.flags.DEFINE_string(
+    "strategy", "ann", "Distance calculate algorithm."
+)
 FLAGS = tf.flags.FLAGS
-
 
 def metadata_function(metadata_batches):
     """Gets the metadata."""
@@ -68,11 +72,11 @@ def objective_function(corpus_element):
 def main(_):
     """Configures and runs the fuzzer."""
 
-    # Log more
+    # Log more and return how logging output will be produced
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    coverage_function = raw_logit_coverage_function
-    target_seed = np.random.uniform(low=0.0, high=1.0, size=(1,))
+    coverage_function = raw_logit_coverage_function  # change function name
+    target_seed = np.random.uniform(low=0.0, high=1.0, size=(1,))  # 语料库，随机值
     numpy_arrays = [[target_seed]]
 
     targets_tensor = tf.placeholder(tf.float32, [64, 1])
@@ -94,9 +98,11 @@ def main(_):
         mutation_function = lambda elt: do_basic_mutations(
             elt, size, a_min=-1000, a_max=1000
         )
+        # 从语料库选择种子
         seed_corpus = seed_corpus_from_numpy_arrays(
             numpy_arrays, coverage_function, metadata_function, fetch_function
         )
+        # corpus: mutations_processed, corpus, time, sample_function, updater
         corpus = InputCorpus(
             seed_corpus, uniform_sample_function, FLAGS.ann_threshold, "kdtree"
         )
@@ -108,6 +114,7 @@ def main(_):
             mutation_function,
             fetch_function,
         )
+        # fuzzer run
         result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)
         if result is not None:
             tf.logging.info("Fuzzing succeeded.")
@@ -118,6 +125,5 @@ def main(_):
         else:
             tf.logging.info("Fuzzing failed to satisfy objective function.")
 
-
 if __name__ == "__main__":
-    tf.app.run()
+    tf.app.run() # main()函数的入口
