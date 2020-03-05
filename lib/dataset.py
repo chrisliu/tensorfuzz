@@ -84,7 +84,7 @@ def download(directory, filename):
         filepath, "wb"
     ) as f_out:
         shutil.copyfileobj(f_in, f_out)
-    os.remove(zipped_filepath)
+    # os.remove(zipped_filepath)
     return filepath
 
 
