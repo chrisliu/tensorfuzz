@@ -37,7 +37,8 @@ def basic_mnist_input_corpus(choose_randomly=False, data_dir="/tmp/mnist"):
     dataset = mnist.train(data_dir)
     dataset = dataset.cache().shuffle(buffer_size=50000).batch(100).repeat()
     # Creates a tf.compat.v1.data.Iterator for enumerating the elements of a dataset
-    iterator = dataset.make_one_shot_iterator()
+    # iterator = dataset.make_one_shot_iterator()
+    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
     images, integer_labels = iterator.get_next()
     images = tf.reshape(images, [-1, 28, 28, 1])
     # labels = tf.one_hot(integer_labels, 10)
