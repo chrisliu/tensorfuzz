@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 import random
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 from lib import fuzz_utils
 from lib.corpus import InputCorpus
 from lib.corpus import seed_corpus_from_numpy_arrays
@@ -31,17 +33,17 @@ from lib.sample_functions import recent_sample_function
 
 
 tf.compat.v1.flags.DEFINE_string(
-    "checkpoint_dir", None, "Dir containing checkpoints of model to fuzz."
+    "checkpoint_dir", "./tmp/nanfuzzer" , "Dir containing checkpoints of model to fuzz."
 )
 tf.compat.v1.flags.DEFINE_integer(
-    "total_inputs_to_fuzz", 100, "Loops over the whole corpus."
+    "total_inputs_to_fuzz", 500, "Loops over the whole corpus."
 )
 tf.compat.v1.flags.DEFINE_integer(
     "mutations_per_corpus_item", 100, "Number of times to mutate corpus item."
 )
 tf.compat.v1.flags.DEFINE_float(
     "ann_threshold",
-    1.0,
+    0.5,
     "Distance below which we consider something new coverage.",
 )
 tf.compat.v1.flags.DEFINE_integer("seed", None, "Random seed for both python and numpy.")
@@ -74,13 +76,13 @@ def main(_):
     """Constructs the fuzzer and performs fuzzing."""
 
     # Log more
-    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.INFO)
+    tf.logging.set_verbosity(tf.logging.INFO)
     # Set the seeds!
     if FLAGS.seed:
         random.seed(FLAGS.seed)
         np.random.seed(FLAGS.seed)
 
-    coverage_function = all_logit_coverage_function
+    coverage_function = all_logit_coverage_function  # a function to compute coverage
     image, label = fuzz_utils.basic_mnist_input_corpus(
         choose_randomly=FLAGS.random_seed_corpus
     )
@@ -112,14 +114,14 @@ def main(_):
         )
         result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)  # iterations
         if result is not None:
-            tf.compat.v1.logging.info("Fuzzing succeeded.")
+            tf.logging.info("Fuzzing succeeded.")
             tf.logging.info(
                 "Generations to make satisfying element: %s.",
                 result.oldest_ancestor()[1],
             )
-            tf.compat.v1.logging.info("Elements for Crashes: {0}".format(result))
+            tf.logging.info("Elements for Crashes: {0}".format(result))
         else:
             tf.logging.info("Fuzzing failed to satisfy objective function.")
 
 if __name__ == "__main__":
-    tf.compat.v1.app.run()
+    tf.app.run()
