@@ -18,13 +18,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import tensorflow.compat.v1 as tf
+tf.disable_v2_behavior()
 import lib.dataset as mnist
-import tensorflow as tf
-
 
 tf.compat.v1.flags.DEFINE_string(
     "checkpoint_dir",
-    "/tmp/nanfuzzer",
+    "./tmp/nanfuzzer",
     "The overall dir in which we store experiments",
 )
 tf.compat.v1.flags.DEFINE_string(
@@ -51,10 +51,10 @@ def classifier(images, init_func):
       A TensorFlow tensor corresponding to a batch of logits.
     """
     image_input_tensor = tf.identity(images, name="image_input_tensor")
-    net = tf.keras.layers.Flatten(image_input_tensor)
-    net = tf.keras.layers.Dense(net, 200, tf.nn.relu, kernel_initializer=init_func)
-    net = tf.keras.layers.Dense(net, 100, tf.nn.relu, kernel_initializer=init_func)
-    net = tf.keras.layers.Dense(
+    net = tf.layers.flatten(image_input_tensor)
+    net = tf.layers.dense(net, 200, tf.nn.relu, kernel_initializer=init_func)
+    net = tf.layers.dense(net, 100, tf.nn.relu, kernel_initializer=init_func)
+    net = tf.layers.dense(
         net, 10, activation=None, kernel_initializer=init_func
     )
     return net, image_input_tensor
@@ -75,10 +75,9 @@ def unsafe_cross_entropy(probabilities, labels):
 # pylint: disable=too-many-locals
 def main(_):
     """Trains the unstable model."""
-
     dataset = mnist.train(FLAGS.data_dir)
     dataset = dataset.cache().shuffle(buffer_size=50000).batch(100).repeat()
-    iterator = dataset.make_one_shot_iterator()
+    iterator = tf.data.make_one_shot_iterator(dataset)
     images, integer_labels = iterator.get_next()
     images = tf.reshape(images, [-1, 28, 28, 1])
     label_input_tensor = tf.identity(integer_labels)
@@ -88,14 +87,14 @@ def main(_):
     )
     logits, image_input_tensor = classifier(images, init_func)
     equality = tf.math.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
-    accuracy = tf.math.reduce_mean(tf.to_float(equality))
+    accuracy = tf.math.reduce_mean(tf.cast(equality, tf.float32))
 
     # This will NaN if abs of any logit >= 88.
     bad_softmax = unsafe_softmax(logits)
     # This will NaN if max_logit - min_logit >= 88.
     bad_cross_entropies = unsafe_cross_entropy(bad_softmax, labels)
-    loss = tf.math.reduce_mean(bad_cross_entropies)
-    optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.01)
+    loss = tf.compat.v1.reduce_mean(bad_cross_entropies)
+    optimizer = tf.train.GradientDescentOptimizer(0.01)
 
     tf.compat.v1.add_to_collection("input_tensors", image_input_tensor)
     tf.compat.v1.add_to_collection("input_tensors", label_input_tensor)
@@ -104,9 +103,10 @@ def main(_):
     tf.compat.v1.add_to_collection("metadata_tensors", bad_cross_entropies)
     tf.compat.v1.add_to_collection("metadata_tensors", logits)
 
+    print('loss: {0}'.format(type(loss)))
     train_op = optimizer.minimize(loss)
 
-    saver = tf.compat.v1.train.Saver(keep_checkpoint_every_n_hours=1)
+    saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
     sess = tf.compat.v1.Session()
     sess.run(tf.compat.v1.initialize_all_tables())
     sess.run(tf.compat.v1.global_variables_initializer())
