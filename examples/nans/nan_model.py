@@ -22,26 +22,26 @@ import lib.dataset as mnist
 import tensorflow as tf
 
 
-tf.flags.DEFINE_string(
+tf.compat.v1.flags.DEFINE_string(
     "checkpoint_dir",
     "/tmp/nanfuzzer",
     "The overall dir in which we store experiments",
 )
-tf.flags.DEFINE_string(
+tf.compat.v1.flags.DEFINE_string(
     "data_dir", "/tmp/mnist", "The directory in which we store the MNIST data"
 )
-tf.flags.DEFINE_integer(
+tf.compat.v1.flags.DEFINE_integer(
     "training_steps", 35000, "Number of mini-batch gradient updates to perform"
 )
-tf.flags.DEFINE_float(
+tf.compat.v1.flags.DEFINE_float(
     "init_scale", 0.25, "Scale of weight initialization for classifier"
 )
 
-FLAGS = tf.flags.FLAGS
+FLAGS = tf.compat.v1.flags.FLAGS
 
 
 def classifier(images, init_func):
-    """Builds TF graph for clasifying images.
+    """Builds TF graph for classifying images.
 
     Args:
         images: TensorFlow tensor corresponding to a batch of images.
@@ -51,10 +51,10 @@ def classifier(images, init_func):
       A TensorFlow tensor corresponding to a batch of logits.
     """
     image_input_tensor = tf.identity(images, name="image_input_tensor")
-    net = tf.layers.flatten(image_input_tensor)
-    net = tf.layers.dense(net, 200, tf.nn.relu, kernel_initializer=init_func)
-    net = tf.layers.dense(net, 100, tf.nn.relu, kernel_initializer=init_func)
-    net = tf.layers.dense(
+    net = tf.keras.layers.Flatten(image_input_tensor)
+    net = tf.keras.layers.Dense(net, 200, tf.nn.relu, kernel_initializer=init_func)
+    net = tf.keras.layers.Dense(net, 100, tf.nn.relu, kernel_initializer=init_func)
+    net = tf.keras.layers.Dense(
         net, 10, activation=None, kernel_initializer=init_func
     )
     return net, image_input_tensor
@@ -62,14 +62,14 @@ def classifier(images, init_func):
 
 def unsafe_softmax(logits):
     """Computes softmax in a numerically unstable way."""
-    return tf.exp(logits) / tf.reduce_sum(
-        tf.exp(logits), axis=1, keepdims=True
+    return tf.math.exp(logits) / tf.math.reduce_sum(
+        tf.math.exp(logits), axis=1, keepdims=True
     )
 
 
 def unsafe_cross_entropy(probabilities, labels):
     """Computes cross entropy in a numerically unstable way."""
-    return -tf.reduce_sum(labels * tf.log(probabilities), axis=1)
+    return -tf.math.reduce_sum(labels * tf.math.log(probabilities), axis=1)
 
 
 # pylint: disable=too-many-locals
@@ -87,29 +87,29 @@ def main(_):
         -FLAGS.init_scale, FLAGS.init_scale
     )
     logits, image_input_tensor = classifier(images, init_func)
-    equality = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
-    accuracy = tf.reduce_mean(tf.to_float(equality))
+    equality = tf.math.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
+    accuracy = tf.math.reduce_mean(tf.to_float(equality))
 
     # This will NaN if abs of any logit >= 88.
     bad_softmax = unsafe_softmax(logits)
     # This will NaN if max_logit - min_logit >= 88.
     bad_cross_entropies = unsafe_cross_entropy(bad_softmax, labels)
-    loss = tf.reduce_mean(bad_cross_entropies)
-    optimizer = tf.train.GradientDescentOptimizer(0.01)
+    loss = tf.math.reduce_mean(bad_cross_entropies)
+    optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.01)
 
-    tf.add_to_collection("input_tensors", image_input_tensor)
-    tf.add_to_collection("input_tensors", label_input_tensor)
-    tf.add_to_collection("coverage_tensors", logits)
-    tf.add_to_collection("metadata_tensors", bad_softmax)
-    tf.add_to_collection("metadata_tensors", bad_cross_entropies)
-    tf.add_to_collection("metadata_tensors", logits)
+    tf.compat.v1.add_to_collection("input_tensors", image_input_tensor)
+    tf.compat.v1.add_to_collection("input_tensors", label_input_tensor)
+    tf.compat.v1.add_to_collection("coverage_tensors", logits)
+    tf.compat.v1.add_to_collection("metadata_tensors", bad_softmax)
+    tf.compat.v1.add_to_collection("metadata_tensors", bad_cross_entropies)
+    tf.compat.v1.add_to_collection("metadata_tensors", logits)
 
     train_op = optimizer.minimize(loss)
 
-    saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
-    sess = tf.Session()
-    sess.run(tf.initialize_all_tables())
-    sess.run(tf.global_variables_initializer())
+    saver = tf.compat.v1.train.Saver(keep_checkpoint_every_n_hours=1)
+    sess = tf.compat.v1.Session()
+    sess.run(tf.compat.v1.initialize_all_tables())
+    sess.run(tf.compat.v1.global_variables_initializer())
 
     # train classifier on these images and labels
     for idx in range(FLAGS.training_steps):
@@ -122,7 +122,6 @@ def main(_):
                 os.path.join(FLAGS.checkpoint_dir, "fuzz_checkpoint"),
                 global_step=idx,
             )
-
 
 if __name__ == "__main__":
     tf.app.run()
