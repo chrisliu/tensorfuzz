@@ -86,8 +86,12 @@ class Fuzzer(object):
                     mutated_coverage_list[idx],
                     parent,
                 )
+
+                # if True, so it appears crash, then return this element (seed)
                 if self.objective_function(new_element):
-                    return new_element  # find crash seed once
-                self.corpus.maybe_add_to_corpus(new_element)
+                    return new_element
+
+                # update corpus of seeds
+                self.corpus.maybe_add_to_corpus(new_element)  # --> flann.build_index()
 
         return None
