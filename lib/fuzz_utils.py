@@ -88,7 +88,7 @@ def build_feed_dict(input_tensors, input_batches):
 
     # If the tensor has concrete shape and we are feeding in something that has a
     # non-matching shape, we will need to tile it to make it work.
-    tensor_bszs = [x.get_shape().as_list()[0] for x in input_tensors]
+    tensor_bszs = [x.get_shape().as_list()[0] for x in input_tensors]  # [None, 28, 28, 1]
     should_tile = any([x is not None for x in tensor_bszs])
     if should_tile:
         max_tensor_bsz = max([x for x in tensor_bszs if x is not None])
@@ -133,11 +133,12 @@ def get_tensors_from_checkpoint(sess, checkpoint_dir):
         The 3 lists of tensorflow tensors described above.
     """
     potential_files = tf.compat.v1.gfile.ListDirectory(checkpoint_dir)
+
     meta_files = [f for f in potential_files if f.endswith(".meta")]
 
     # Sort the meta files by global step
     meta_files.sort(key=lambda f: int(f[: -len(".meta")].split("-")[-1]))
-    meta_file = meta_files[-1]
+    meta_file = meta_files[-1]  # newest one
 
     explicit_meta_path = os.path.join(checkpoint_dir, meta_file)
     explicit_checkpoint_path = explicit_meta_path[: -len(".meta")]
@@ -149,6 +150,7 @@ def get_tensors_from_checkpoint(sess, checkpoint_dir):
     )
     new_saver.restore(sess, explicit_checkpoint_path)
 
+    # get_collection: return list of values
     input_tensors = tf.compat.v1.get_collection("input_tensors")
     coverage_tensors = tf.compat.v1.get_collection("coverage_tensors")
     metadata_tensors = tf.compat.v1.get_collection("metadata_tensors")
@@ -158,6 +160,7 @@ def get_tensors_from_checkpoint(sess, checkpoint_dir):
         "coverage": coverage_tensors,
         "metadata": metadata_tensors,
     }
+
     return tensor_map
 
 
