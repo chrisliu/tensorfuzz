@@ -11,195 +11,129 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Utilities for the fuzzer library."""
+"""tf.data.Dataset interface to the MNIST dataset."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import gzip
 import os
-import random as random
+import shutil
+import tempfile
+
 import numpy as np
-import scipy
+from six.moves import urllib
 import tensorflow as tf
-import lib.dataset as mnist
 
 
-def basic_mnist_input_corpus(choose_randomly=False, data_dir="/tmp/mnist"):
-    """Returns the first image and label from MNIST.
-
-    Args:
-      choose_randomly: a boolean indicating whether to choose randomly.
-      data_dir: a string giving the location of the original MNIST data.
-    Returns:
-      A single image and a single label.
-    """
-
-    dataset = mnist.train(data_dir)
-    dataset = dataset.cache().shuffle(buffer_size=50000).batch(100).repeat()
-    # Creates a tf.compat.v1.data.Iterator for enumerating the elements of a dataset
-    # iterator = dataset.make_one_shot_iterator()
-    iterator = tf.compat.v1.data.make_one_shot_iterator(dataset)
-    images, integer_labels = iterator.get_next()
-    images = tf.reshape(images, [-1, 28, 28, 1])
-    # labels = tf.one_hot(integer_labels, 10)
-    labels = integer_labels
-
-    with tf.compat.v1.train.MonitoredTrainingSession() as sess:
-        image_batch, label_batch = sess.run([images, labels])
-
-    if choose_randomly:
-        idx = random.choice(range(image_batch.shape[0]))
-    else:
-        idx = 0
-    tf.compat.v1.logging.info("Seeding corpus with element at idx: %s", idx)
-    return image_batch[idx], label_batch[idx]
+def read32(bytestream):
+    """Read 4 bytes from bytestream as an unsigned 32-bit integer."""
+    # here, little confused
+    dtype = np.dtype(np.uint32).newbyteorder(">")
+    print('******dtype: {0}*******'.format(dtype))
+    return np.frombuffer(bytestream.read(4), dtype=dtype)[0]
 
 
-def imsave(image, path):
-    """Saves an image to a given path.
-
-    This function has the side-effect of writing to disk.
-
-    Args:
-        image: The Numpy array representing the image.
-        path: A Filepath.
-    """
-    image = np.squeeze(image)
-    with tf.io.gfile.GFile(path, mode="w") as fptr:
-        scipy.misc.imsave(fptr, image)
-
-
-def build_feed_dict(input_tensors, input_batches):
-    """Constructs a feed_dict to pass to the run method of TensorFlow Session.
-
-    In the logic we assume all tensors should have the same batch size.
-    However, we have to do some crazy stuff to deal with the case when
-    some of the tensors have concrete shapes and some don't, especially
-    when we're constructing the seed corpus.
-
-    Args:
-        input_tensors: The TF tensors into which we will feed the fuzzed inputs.
-        input_batches: Numpy arrays that will be fed into the input tensors.
-
-    Returns:
-        The feed_dict described above.
-    """
-    feed_dict = {}
-
-    # If the tensor has concrete shape and we are feeding in something that has a
-    # non-matching shape, we will need to tile it to make it work.
-    tensor_bszs = [x.get_shape().as_list()[0] for x in input_tensors]  # [None, 28, 28, 1]
-    should_tile = any([x is not None for x in tensor_bszs])
-    if should_tile:
-        max_tensor_bsz = max([x for x in tensor_bszs if x is not None])
-    for idx in range(len(list(zip(input_tensors, input_batches)))):
-        np_bsz = input_batches[idx].shape[0]
-        if should_tile and np_bsz != max_tensor_bsz:
-            tf.compat.v1.logging.info(
-                "Tiling feed_dict inputs due to concrete batch sizes."
+def check_image_file_header(filename):
+    """Validate that filename corresponds to images for the MNIST dataset."""
+    with tf.io.gfile.GFile(filename, "rb") as fptr:
+        magic = read32(fptr)
+        read32(fptr)  # num_images, unused
+        rows = read32(fptr)
+        cols = read32(fptr)
+        # here why set these number: 2051, 28
+        if magic != 2051:
+            raise ValueError(
+                "Invalid magic number %d in MNIST file %s" % (magic, fptr.name)
             )
-            this_shape = [max_tensor_bsz // np_bsz] + [
-                1 for _ in range(len(input_batches[idx].shape[1:]))
-            ]
-            input_batches[idx] = np.tile(input_batches[idx], this_shape)
-
-    # Note that this will truncate one of input_tensors or input_batches
-    # if either of them is longer. This is WAI right now, because we sometimes
-    # want to store the label for an image classifier for which we don't have
-    # a label placeholder in the checkpoint.
-    for input_tensor, input_batch in list(zip(input_tensors, input_batches)):
-        feed_dict[input_tensor] = input_batch
-    return feed_dict
+        if rows != 28 or cols != 28:
+            raise ValueError(
+                "Invalid MNIST file %s: Expected 28x28 images, found %dx%d"
+                % (fptr.name, rows, cols)
+            )
 
 
-def get_tensors_from_checkpoint(sess, checkpoint_dir):
-    """Loads and returns the fuzzing tensors given a session and a directory.
+def check_labels_file_header(filename):
+    """Validate that filename corresponds to labels for the MNIST dataset."""
+    with tf.io.gfile.GFile(filename, "rb") as fptr:
+        magic = read32(fptr)
+        read32(fptr)  # num_items, unused
+        if magic != 2049:
+            raise ValueError(
+                "Invalid magic number %d in MNIST file %s" % (magic, fptr.name)
+            )
 
-    It's assumed that the checkpoint directory has checkpoints from a TensorFlow
-    model, and moreover that those checkpoints have 3 collections:
-    1. input_tensors: The tensors into which we will feed the fuzzed inputs.
-    2. coverage_tensors: The tensors from which we will fetch information needed
-      to compute the coverage. The coverage will be used to guide the fuzzing
-      process.
-    3. metadata_tensors: The tensors from which we will fetch information needed
-      to compute the metadata. The metadata can be used for computing the fuzzing
-      objective or just to track the progress of fuzzing.
-
-    Args:
-      sess: a TensorFlow Session object.
-      checkpoint_dir: a directory containing the TensorFlow checkpoints.
-
-    Returns:
-        The 3 lists of tensorflow tensors described above.
-    """
-    potential_files = tf.compat.v1.gfile.ListDirectory(checkpoint_dir)
-
-    meta_files = [f for f in potential_files if f.endswith(".meta")]
-
-    # Sort the meta files by global step
-    meta_files.sort(key=lambda f: int(f[: -len(".meta")].split("-")[-1]))
-    meta_file = meta_files[-1]  # newest one
-
-    explicit_meta_path = os.path.join(checkpoint_dir, meta_file)
-    explicit_checkpoint_path = explicit_meta_path[: -len(".meta")]
-    tf.compat.v1.logging.info("Visualizing checkpoint: %s", explicit_checkpoint_path)
-
-    # Recreates a Graph saved in a MetaGraphDef protocol.
-    new_saver = tf.compat.v1.train.import_meta_graph(
-        explicit_meta_path, clear_devices=True
+def download(directory, filename):
+    """Download (and unzip) a file from the MNIST dataset if not already done."""
+    filepath = os.path.join(directory, filename)
+    if tf.io.gfile.exists(filepath):
+        return filepath
+    if not tf.io.gfile.exists(directory):
+        tf.io.gfile.makedirs(directory)
+    # CVDF mirror of http://yann.lecun.com/exdb/mnist/
+    url = (
+        "https://storage.googleapis.com/cvdf-datasets/mnist/"
+        + filename
+        + ".gz"
     )
-    new_saver.restore(sess, explicit_checkpoint_path)
-
-    # get_collection: return list of values
-    input_tensors = tf.compat.v1.get_collection("input_tensors")
-    coverage_tensors = tf.compat.v1.get_collection("coverage_tensors")
-    metadata_tensors = tf.compat.v1.get_collection("metadata_tensors")
-
-    tensor_map = {
-        "input": input_tensors,
-        "coverage": coverage_tensors,
-        "metadata": metadata_tensors,
-    }
-
-    return tensor_map
+    _, zipped_filepath = tempfile.mkstemp(suffix=".gz")
+    print("Downloading %s to %s" % (url, zipped_filepath))
+    urllib.request.urlretrieve(url, zipped_filepath)
+    with gzip.open(zipped_filepath, "rb") as f_in, tf.io.gfile.GFile(
+        filepath, "wb"
+    ) as f_out:
+        shutil.copyfileobj(f_in, f_out)
+    # os.remove(zipped_filepath)
+    return filepath
 
 
-def fetch_function(
-    sess, input_tensors, coverage_tensors, metadata_tensors, input_batches
-):
-    """Fetches from the TensorFlow runtime given inputs.
+def dataset(directory, images_file, labels_file):
+    """Download and parse MNIST dataset."""
 
-    Args:
-      sess: a TensorFlow Session object.
-      input_tensors: TF tensors to which we feed input_batches.
-      coverage_tensors: TF tensors we fetch for coverage.
-      metadata_tensors: TF tensors we fetch for metadata.
-      input_batches: numpy arrays we feed to input_tensors.
+    images_file = download(directory, images_file)
+    labels_file = download(directory, labels_file)
 
-    Returns:
-        Coverage and metadata as lists of numpy arrays.
-    """
-    feed_dict = build_feed_dict(input_tensors, input_batches)
-    fetched_data = sess.run(
-        coverage_tensors + metadata_tensors, feed_dict=feed_dict
+    check_image_file_header(images_file)
+    check_labels_file_header(labels_file)
+
+    def decode_image(image):
+        """Decodes and normalizes the image."""
+        # Normalize from [0, 255] to [0.0, 1.0]
+        image = tf.io.decode_raw(image, tf.uint8)
+        image = tf.cast(image, tf.float32)
+        image = tf.reshape(image, [784])
+        image = image / 255.0  # [0.0, 1.0]
+        image = image * 2.0  # [0.0, 2.0]
+        image = image - 1.0  # [-1.0, 1.0]
+        return image
+
+    def decode_label(label):
+        """Decodes and reshapes the label."""
+        label = tf.io.decode_raw(label, tf.uint8)  # tf.string -> [tf.uint8]
+        label = tf.reshape(label, [])  # label is a scalar
+        return tf.cast(label, tf.int32)
+
+    # A Dataset of fixed-length records from one or more binary files.
+    images = tf.data.FixedLengthRecordDataset(
+        images_file, 28 * 28, header_bytes=16
+    ).map(decode_image)
+
+    labels = tf.data.FixedLengthRecordDataset(
+        labels_file, 1, header_bytes=8
+    ).map(decode_label)
+    return tf.data.Dataset.zip((images, labels))
+
+
+def train(directory):
+    """tf.data.Dataset object for MNIST training data."""
+    return dataset(
+        directory, "train-images-idx3-ubyte", "train-labels-idx1-ubyte"
     )
-    idx = len(coverage_tensors)
-    coverage_batches = fetched_data[:idx]
-    metadata_batches = fetched_data[idx:]
-    return coverage_batches, metadata_batches
 
 
-def build_fetch_function(sess, tensor_map):
-    """Constructs fetch function given session and tensors."""
-
-    def func(input_batches):
-        """The fetch function."""
-        return fetch_function(
-            sess,
-            tensor_map["input"],
-            tensor_map["coverage"],
-            tensor_map["metadata"],
-            input_batches,
-        )
-
-    return func
+def test(directory):
+    """tf.data.Dataset object for MNIST test data."""
+    return dataset(
+        directory, "t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte"
+    )
