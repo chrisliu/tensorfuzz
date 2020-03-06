@@ -25,7 +25,7 @@ tf.disable_v2_behavior()
 
 tf.flags.DEFINE_string(
     "checkpoint_dir",
-    "./tmp/quantized_checkpoints",
+    "/tmp/quantized_checkpoints",
     "The overall dir in which we store experiments",
 )
 tf.flags.DEFINE_string(
@@ -41,6 +41,7 @@ FLAGS = tf.flags.FLAGS
 def weight_variable(shape):
     """Construct variable for fully connected weights."""
     initial = tf.truncated_normal(shape, stddev=0.01)
+    # initial = tf.random.truncated_normal(shape=shape, stddev=0.01)  # tf 2.1
     return tf.Variable(initial)
 
 
@@ -89,7 +90,7 @@ def main(_):
     h_fc2 = tf.nn.relu(tf.matmul(h_fc1, w_fc2) + b_fc2)
     h_fc3 = tf.matmul(h_fc2, w_fc3) + b_fc3
 
-    logits = h_fc3
+    logits = h_fc3  # int32, features?
 
     # Now I want to construct another classifier w/ quantized weights
     images_quantized = tf.cast(images_flattened, tf.float16)
@@ -114,17 +115,17 @@ def main(_):
         tf.matmul(h_fc2_quantized, w_fc3_quantized) + b_fc3_quantized
     )
 
-    logits_quantized = h_fc3_quantized
+    logits_quantized = h_fc3_quantized  # float16
 
     labels = tf.one_hot(integer_labels, 10)
-    equality = tf.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
-    accuracy = tf.reduce_mean(tf.to_float(equality))
+    equality = tf.math.equal(tf.argmax(logits, 1), tf.argmax(labels, 1))
+    accuracy = tf.math.reduce_mean(tf.cast(equality, tf.float32))
 
-    cross_entropies = tf.nn.softmax_cross_entropy_with_logits(
+    cross_entropies = tf.nn.softmax_cross_entropy_with_logits_v2(
         logits=logits, labels=labels
     )
-    loss = tf.reduce_mean(cross_entropies)
-    optimizer = tf.train.GradientDescentOptimizer(0.01)
+    loss = tf.math.reduce_mean(cross_entropies)
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.01)
 
     tf.add_to_collection("input_tensors", images)
     tf.add_to_collection("coverage_tensors", logits)
@@ -134,11 +135,10 @@ def main(_):
 
     train_op = optimizer.minimize(loss)
 
-    saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)
+    saver = tf.train.Saver(keep_checkpoint_every_n_hours=1)  # checkpoint is binary file
     sess = tf.Session()
-    sess.run(tf.initialize_all_tables())
+    sess.run(tf.tables_initializer())
     sess.run(tf.global_variables_initializer())
-
     # train classifier on these images and labels
     for idx in range(FLAGS.training_steps):
         sess.run(train_op)
