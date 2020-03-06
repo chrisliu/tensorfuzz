@@ -23,7 +23,7 @@ import numpy as np
 def do_basic_mutations(
     corpus_element, mutations_count, constraint=None, a_min=-1.0, a_max=1.0
 ):
-    """Mutates image inputs with white noise.
+    """Mutates image inputs with white noise. PS: what is white noise?
 
   Args:
     corpus_element: A CorpusElement object. It's assumed in this case that
@@ -32,6 +32,8 @@ def do_basic_mutations(
     mutations_count: Integer representing number of mutations to do in
       parallel.
     constraint: If not None, a constraint on the norm of the total mutation.
+    a_max: pixels max, if not for image then can change
+    a_min: pixels min, if not for image the can change
 
   Returns:
     A list of batches, the first of which is mutated images and the second of
@@ -41,19 +43,20 @@ def do_basic_mutations(
     # Here we assume the corpus.data is of the form (image, label)
     # We never mutate the label.
     if len(corpus_element.data) > 1:
-        image, label = corpus_element.data
-        image_batch = np.tile(image, [mutations_count, 1, 1, 1])
+        image, label = corpus_element.data  # image: (28, 28, 1)
+        image_batch = np.tile(image, [mutations_count, 1, 1, 1])  # image_batch: (100, 28, 28, 1)
     else:
         image = corpus_element.data[0]
         image_batch = np.tile(image, [mutations_count] + list(image.shape))
 
+    # noise is add some random number? and sigma why set 0.2
     sigma = 0.2
     noise = np.random.normal(size=image_batch.shape, scale=sigma)
 
     if constraint is not None:
         # (image - original_image) is a single image. it gets broadcast into a batch
         # when added to 'noise'
-        ancestor, _ = corpus_element.oldest_ancestor()
+        ancestor, _ = corpus_element.oldest_ancestor()  # least ancestor
         original_image = ancestor.data[0]
         original_image_batch = np.tile(
             original_image, [mutations_count, 1, 1, 1]
