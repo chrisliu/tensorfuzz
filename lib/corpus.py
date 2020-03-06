@@ -44,8 +44,8 @@ class CorpusElement(object):
         """
         self.data = data
         self.metadata = metadata
-        self.parent = parent
         self.coverage = coverage
+        self.parent = parent
 
     def oldest_ancestor(self):
         """Returns the least recently created ancestor of this corpus item."""
@@ -121,6 +121,7 @@ class Updater(object):
         self.lookup_array = np.array(
             [element.coverage for element in corpus_object.corpus]
         )
+        # 最终更新的是flann的build_index, 根据给定的算法
         self.flann.build_index(self.lookup_array, algorithm=self.algorithm)
         tf.compat.v1.logging.info("Flushing buffer and building index.")
 
@@ -153,20 +154,31 @@ class Updater(object):
             ]
             nearest_distance = min(exact_distances + approx_distances.tolist())
             if nearest_distance > self.threshold:
+                '''BEGIN print and log'''
                 tf.compat.v1.logging.info(
-                    "corpus_size %s mutations_processed %s",
+                    "approx_distances: {0}, exact_distances: {1}, nearest_distance: {2}".format(
+                        approx_distances, exact_distances, nearest_distance
+                    )
+                )
+                tf.compat.v1.logging.info(
+                    "corpus_size: %s, mutations_processed: %s",
                     len(corpus_object.corpus),
                     corpus_object.mutations_processed,
                 )
                 tf.compat.v1.logging.info(
-                    "coverage: %s, metadata: %s",
-                    element.coverage,
-                    element.metadata,
+                    "coverage: %s, metadata: %s", element.coverage, element.metadata
                 )
-                # with open("log.txt", "w+") as myfile:
-                #     line = "coverage: {0}, metadata: {1}".format(element.coverage, element.metadata)
-                #     myfile.write(str(line))
+                # with open("log.txt", "a") as myfile:
+                #     line = "approx_distances: {0}, exact_distances: {1}, nearest_distance: {2}, " \
+                #            "corpus_size: {3}, mutations_processed: {4}, " \
+                #            "corpus_size: {5}, mutations_processed: {6}".format(
+                #         approx_distances, exact_distances, nearest_distance, len(corpus_object.corpus),
+                #         corpus_object.mutations_processed, element.coverage, element.metadata
+                #     )
+                #     log_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                #     myfile.write(str(log_time) + "\t" + str(line).replace("\n", "") + '\n')
                 #     myfile.close()
+                '''END print and log'''
                 corpus_object.corpus.append(element)
                 self.corpus_buffer.append(element.coverage)
                 if len(self.corpus_buffer) >= _BUFFER_SIZE:
@@ -207,8 +219,7 @@ class InputCorpus(object):
             self.log_time = current_time
             tf.compat.v1.logging.info(
                 "mutations_per_second: %s",
-                float(self.mutations_processed)
-                / (current_time - self.start_time),
+                float(self.mutations_processed) / (current_time - self.start_time),
             )
 
     def sample_input(self):
