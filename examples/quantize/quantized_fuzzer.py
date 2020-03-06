@@ -29,10 +29,10 @@ from lib.sample_functions import recent_sample_function
 
 
 tf.flags.DEFINE_string(
-    "checkpoint_dir", "./tmp/quantized_checkpoints", "Dir containing checkpoints of model to fuzz."
+    "checkpoint_dir", /tmp/quantized_checkpoints, "Dir containing checkpoints of model to fuzz."
 )
 tf.flags.DEFINE_string(
-    "output_path", "./tmp/plots/quantized_image.png", "Where to write the satisfying output."
+    "output_path", /tmp/plots/quantized_image.png, "Where to write the satisfying output."
 )
 tf.flags.DEFINE_integer(
     "total_inputs_to_fuzz", 10000, "Loops over the whole corpus."
@@ -52,7 +52,7 @@ tf.flags.DEFINE_float(
     "Distance below which we consider something new coverage.",
 )
 tf.flags.DEFINE_boolean(
-    "random_seed_corpus", False, "Whether to choose a random seed corpus."
+    "random_seed_corpus", True, "Whether to choose a random seed corpus."
 )
 FLAGS = tf.flags.FLAGS
 
@@ -73,11 +73,13 @@ def objective_function(corpus_element):
     logits_16 = corpus_element.metadata[1]
     prediction_16 = np.argmax(logits_16)
     prediction_32 = np.argmax(logits_32)
+
     if prediction_16 == prediction_32:
         return False
 
+    # else, predicts label are different
     tf.logging.info(
-        "Objective function satisfied: 32: %s, 16: %s",
+        "Objective function satisfied: prediction_float32: %s, prediction_float16: %s",
         prediction_32,
         prediction_16,
     )
@@ -88,10 +90,13 @@ def objective_function(corpus_element):
 def main(_):
     """Constructs the fuzzer and fuzzes."""
 
+    # Sets the threshold for what messages will be logged.
     # Log more
     tf.logging.set_verbosity(tf.logging.INFO)
 
     coverage_function = raw_logit_coverage_function
+
+    # get inputs corpus data
     image, label = fuzz_utils.basic_mnist_input_corpus(
         choose_randomly=FLAGS.random_seed_corpus
     )
@@ -106,8 +111,7 @@ def main(_):
         )
 
         fetch_function = fuzz_utils.build_fetch_function(sess, tensor_map)
-
-        size = FLAGS.mutations_per_corpus_item
+        size = FLAGS.mutations_per_corpus_item  # 100
 
         def mutation_function(elt):
             """Mutates the element in question."""
@@ -119,6 +123,7 @@ def main(_):
         corpus = InputCorpus(
             seed_corpus, recent_sample_function, FLAGS.ann_threshold, "kdtree"
         )
+
         fuzzer = Fuzzer(
             corpus,
             coverage_function,
@@ -127,25 +132,28 @@ def main(_):
             mutation_function,
             fetch_function,
         )
-        result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)
+
+        result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)  # tpye: CorpusElement
+
         if result is not None:
             # Double check that there is persistent disagreement
             for idx in range(10):
                 logits, quantized_logits = sess.run(
                     [tensor_map["coverage"][0], tensor_map["coverage"][1]],
                     feed_dict={
-                        tensor_map["input"][0]: np.expand_dims(
-                            result.data[0], 0
-                        )
+                        tensor_map["input"][0]: np.expand_dims(result.data[0], 0)
                     },
                 )
+
                 if np.argmax(logits, 1) != np.argmax(quantized_logits, 1):
                     tf.logging.info("disagreement confirmed: idx %s", idx)
                 else:
-                    tf.logging.info("SPURIOUS DISAGREEMENT!!!")
-            tf.logging.info("Fuzzing succeeded.")
+                    tf.logging.info(
+                        "Idx: {0}, SPURIOUS DISAGREEMENT!!! LOGITS: {1}, QUANTIZED_LOGITS: {2}!".
+                            format(idx, logits, quantized_logits)
+                    )
             tf.logging.info(
-                "Generations to make satisfying element: %s.",
+                "Fuzzing succeeded. Generations to make satisfying element: %s.",
                 result.oldest_ancestor()[1],
             )
             max_diff = np.max(result.data[0] - image_copy)
