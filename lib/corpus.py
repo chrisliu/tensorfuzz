@@ -22,7 +22,7 @@ import numpy as np
 import tensorflow as tf
 import pyflann
 
-_BUFFER_SIZE = 50
+_BUFFER_SIZE = 20  # can be modified
 
 # pylint: disable=too-few-public-methods
 class CorpusElement(object):
@@ -57,9 +57,7 @@ class CorpusElement(object):
         return current_element, generations
 
 
-def seed_corpus_from_numpy_arrays(
-    numpy_arrays, coverage_function, metadata_function, fetch_function
-):
+def seed_corpus_from_numpy_arrays(numpy_arrays, coverage_function, metadata_function, fetch_function):
     """Constructs a seed_corpus given numpy_arrays.
 
     We only use the first element of the batch that we fetch, because
@@ -79,10 +77,14 @@ def seed_corpus_from_numpy_arrays(
     for input_array_list in numpy_arrays:
         input_batches = []
         for input_array in input_array_list:
-            input_batches.append(np.expand_dims(input_array, axis=0))  # row
+            input_batches.append(np.expand_dims(input_array, axis=0))  # row, expand, why
+
         coverage_batches, metadata_batches = fetch_function(input_batches)
+
         coverage_list = coverage_function(coverage_batches)
+
         metadata_list = metadata_function(metadata_batches)
+
         new_element = CorpusElement(
             input_array_list, metadata_list[0], coverage_list[0], None
         )
@@ -143,7 +145,7 @@ class Updater(object):
         """
         if corpus_object.corpus is None:
             corpus_object.corpus = [element]
-            self.build_index_and_flush_buffer(corpus_object)
+            self.build_index_and_flush_buffer(corpus_object)  # seems like AFL's share memory
         else:
             _, approx_distances = self.flann.nn_index(
                 np.array([element.coverage]), 1, algorithm=self.algorithm
@@ -152,14 +154,14 @@ class Updater(object):
                 np.sum(np.square(element.coverage - buffer_elt))
                 for buffer_elt in self.corpus_buffer
             ]
-            nearest_distance = min(exact_distances + approx_distances.tolist())
+            nearest_distance = min(exact_distances + approx_distances.tolist())  # list connection
             if nearest_distance > self.threshold:
                 '''BEGIN print and log'''
-                tf.compat.v1.logging.info(
-                    "approx_distances: {0}, exact_distances: {1}, nearest_distance: {2}".format(
-                        approx_distances, exact_distances, nearest_distance
-                    )
-                )
+                # tf.compat.v1.logging.info(
+                #     "approx_distances: {0}, exact_distances: {1}, nearest_distance: {2}".format(
+                #         approx_distances, exact_distances, nearest_distance
+                #     )
+                # )
                 tf.compat.v1.logging.info(
                     "corpus_size: %s, mutations_processed: %s",
                     len(corpus_object.corpus),
@@ -168,20 +170,12 @@ class Updater(object):
                 tf.compat.v1.logging.info(
                     "coverage: %s, metadata: %s", element.coverage, element.metadata
                 )
-                # with open("log.txt", "a") as myfile:
-                #     line = "approx_distances: {0}, exact_distances: {1}, nearest_distance: {2}, " \
-                #            "corpus_size: {3}, mutations_processed: {4}, " \
-                #            "corpus_size: {5}, mutations_processed: {6}".format(
-                #         approx_distances, exact_distances, nearest_distance, len(corpus_object.corpus),
-                #         corpus_object.mutations_processed, element.coverage, element.metadata
-                #     )
-                #     log_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-                #     myfile.write(str(log_time) + "\t" + str(line).replace("\n", "") + '\n')
-                #     myfile.close()
                 '''END print and log'''
                 corpus_object.corpus.append(element)
                 self.corpus_buffer.append(element.coverage)
+                print("corpus_buffer: {0}".format(self.corpus_buffer))
                 if len(self.corpus_buffer) >= _BUFFER_SIZE:
+                    # update index flush buffer
                     self.build_index_and_flush_buffer(corpus_object)
 
 
@@ -225,5 +219,4 @@ class InputCorpus(object):
     def sample_input(self):
         """Grabs new input from corpus according to sample_function."""
         choice = self.sample_function(self)
-        # a function
         return choice
