@@ -22,20 +22,25 @@ tf.disable_v2_behavior()
 from lib import fuzz_utils
 from lib.corpus import InputCorpus
 from lib.corpus import seed_corpus_from_numpy_arrays
-from lib.coverage_functions import raw_logit_coverage_function
+from lib.coverage_functions import raw_logit_coverage_function, all_logit_coverage_function
 from lib.fuzzer import Fuzzer
 from lib.mutation_functions import do_basic_mutations
 from lib.sample_functions import recent_sample_function
 
+checkpoint_dir = r"E:\博士研究生\Fuzzing相关\code\AI\tensorfuzz\tmp\quantized_checkpoints"
+output_path = r"E:\博士研究生\Fuzzing相关\code\AI\tensorfuzz\tmp\plots\quantized_image.png"
 
 tf.flags.DEFINE_string(
-    "checkpoint_dir", /tmp/quantized_checkpoints, "Dir containing checkpoints of model to fuzz."
+    "checkpoint_dir", checkpoint_dir, "Dir containing checkpoints of model to fuzz."
 )
 tf.flags.DEFINE_string(
-    "output_path", /tmp/plots/quantized_image.png, "Where to write the satisfying output."
+    "output_path", output_path, "Where to write the satisfying output."
+)
+tf.compat.v1.flags.DEFINE_string(
+    "algorithm", "composite", "Algorithms of ANN: kdtree, kmeans, composite, autotuned."
 )
 tf.flags.DEFINE_integer(
-    "total_inputs_to_fuzz", 10000, "Loops over the whole corpus."
+    "total_inputs_to_fuzz", 1000000, "Loops over the whole corpus."
 )
 tf.flags.DEFINE_integer(
     "mutations_per_corpus_item", 100, "Number of times to mutate corpus item."
@@ -71,13 +76,16 @@ def objective_function(corpus_element):
     """Checks if the element is misclassified."""
     logits_32 = corpus_element.metadata[0]
     logits_16 = corpus_element.metadata[1]
-    prediction_16 = np.argmax(logits_16)
+    prediction_16 = np.argmax(logits_16)  # return index of maximum
     prediction_32 = np.argmax(logits_32)
 
     if prediction_16 == prediction_32:
         return False
 
     # else, predicts label are different
+    print("logits_16: {0}, logits_32: {1}, coverage: {2}".format(
+        logits_16, logits_32, corpus_element.coverage)
+    )
     tf.logging.info(
         "Objective function satisfied: prediction_float32: %s, prediction_float16: %s",
         prediction_32,
@@ -94,7 +102,9 @@ def main(_):
     # Log more
     tf.logging.set_verbosity(tf.logging.INFO)
 
-    coverage_function = raw_logit_coverage_function
+    # all works
+    # coverage_function = raw_logit_coverage_function
+    coverage_function = all_logit_coverage_function
 
     # get inputs corpus data
     image, label = fuzz_utils.basic_mnist_input_corpus(
@@ -117,11 +127,12 @@ def main(_):
             """Mutates the element in question."""
             return do_basic_mutations(elt, size, FLAGS.perturbation_constraint)
 
+        # initialization of seed corpus
         seed_corpus = seed_corpus_from_numpy_arrays(
             numpy_arrays, coverage_function, metadata_function, fetch_function
         )
         corpus = InputCorpus(
-            seed_corpus, recent_sample_function, FLAGS.ann_threshold, "kdtree"
+            seed_corpus, recent_sample_function, FLAGS.ann_threshold, FLAGS.algorithm
         )
 
         fuzzer = Fuzzer(
@@ -133,17 +144,15 @@ def main(_):
             fetch_function,
         )
 
-        result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)  # tpye: CorpusElement
+        result = fuzzer.loop(FLAGS.total_inputs_to_fuzz)  # type is CorpusElement
 
         if result is not None:
             # Double check that there is persistent disagreement
             for idx in range(10):
                 logits, quantized_logits = sess.run(
                     [tensor_map["coverage"][0], tensor_map["coverage"][1]],
-                    feed_dict={
-                        tensor_map["input"][0]: np.expand_dims(result.data[0], 0)
-                    },
-                )
+                    feed_dict={tensor_map["input"][0]: np.expand_dims(result.data[0], 0)},
+                )  # feed_dict: replace tensor value
 
                 if np.argmax(logits, 1) != np.argmax(quantized_logits, 1):
                     tf.logging.info("disagreement confirmed: idx %s", idx)
