@@ -51,26 +51,26 @@ def do_basic_mutations(
 
     # noise is add some random number? and sigma why set 0.2
     sigma = 0.2
-    noise = np.random.normal(size=image_batch.shape, scale=sigma)
+    noise = np.random.normal(size=image_batch.shape, scale=sigma)  # Gaussian Distribution
+    # noise = np.random.laplace(size=image_batch.shape, scale=sigma)
+    # noise = np.random.logistic(size=image_batch.shape, scale=sigma)
 
-    if constraint is not None:
+    if constraint is not None:  # mutation trick 2
         # (image - original_image) is a single image. it gets broadcast into a batch
         # when added to 'noise'
-        ancestor, _ = corpus_element.oldest_ancestor()  # least ancestor
+        ancestor, _ = corpus_element.oldest_ancestor()  # least ancestor: parent
         original_image = ancestor.data[0]
-        original_image_batch = np.tile(
-            original_image, [mutations_count, 1, 1, 1]
-        )
-        cumulative_noise = noise + (image_batch - original_image_batch)
+
+        original_image_batch = np.tile(original_image, [mutations_count, 1, 1, 1])
+
+        cumulative_noise = noise + (image_batch - original_image_batch)  # connect with ancestor image
         # pylint: disable=invalid-unary-operand-type
         noise = np.clip(cumulative_noise, a_min=-constraint, a_max=constraint)
         mutated_image_batch = noise + original_image_batch
     else:
-        mutated_image_batch = noise + image_batch
+        mutated_image_batch = noise + image_batch  # mutation trick 1
 
-    mutated_image_batch = np.clip(
-        mutated_image_batch, a_min=a_min, a_max=a_max
-    )
+    mutated_image_batch = np.clip(mutated_image_batch, a_min=a_min, a_max=a_max)
 
     if len(corpus_element.data) > 1:
         label_batch = np.tile(label, [mutations_count])
