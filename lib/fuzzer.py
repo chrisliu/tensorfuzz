@@ -40,8 +40,8 @@ class Fuzzer(object):
       corpus: An InputCorpus object.
       coverage_function: a function that does CorpusElement -> Coverage.
       metadata_function: a function that does CorpusElement -> Metadata.
-      objective_function: a function that checks if a CorpusElement satisifies
-        the fuzzing objective (e.g. find a NaN, find a misclassification, etc).
+      objective_function: a function that checks if a CorpusElement satisfies
+        the fuzzing objective (e.g. find a NaN, find a misclassified, etc).
       mutation_function: a function that does CorpusElement -> Metadata.
       fetch_function: grabs numpy arrays from the TF runtime using the relevant
         tensors.
@@ -58,18 +58,17 @@ class Fuzzer(object):
     def loop(self, iterations):
         """Fuzzes a machine learning model in a loop, making *iterations* steps."""
         # iterations number define by people
+
         for iteration in range(iterations):
             if iteration % 100 == 0:
                 tf.compat.v1.logging.info("fuzzing iteration: %s", iteration)
-            parent = self.corpus.sample_input()
+            parent = self.corpus.sample_input()  # random choice, i think here can be improved
 
             # Get a mutated batch for each input tensor
             mutated_data_batches = self.mutation_function(parent)
 
             # Grab the coverage and metadata for mutated batch from the TF runtime.
-            coverage_batches, metadata_batches = self.fetch_function(
-                mutated_data_batches
-            )
+            coverage_batches, metadata_batches = self.fetch_function(mutated_data_batches)
 
             # Get the coverage - one from each batch element
             mutated_coverage_list = self.coverage_function(coverage_batches)
@@ -81,9 +80,9 @@ class Fuzzer(object):
             # pylint: disable=consider-using-enumerate
             for idx in range(len(mutated_coverage_list)):
                 new_element = CorpusElement(
-                    [batch[idx] for batch in mutated_data_batches],
-                    mutated_metadata_list[idx],
-                    mutated_coverage_list[idx],
+                    [batch[idx] for batch in mutated_data_batches],  # data
+                    mutated_metadata_list[idx],  # metadata
+                    mutated_coverage_list[idx],  # coverage
                     parent,
                 )
 
