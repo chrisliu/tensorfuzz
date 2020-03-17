@@ -32,7 +32,6 @@ def uniform_sample_function(input_corpus):
     choice = random.choice(corpus)
     return choice
 
-
 def recent_sample_function(input_corpus):
     """Samples from the corpus with a bias toward more recently created inputs.
 
@@ -42,7 +41,7 @@ def recent_sample_function(input_corpus):
   Returns:
     A CorpusElement object.
   """
-    corpus = input_corpus.corpus
-    reservoir = corpus[-5:] + [random.choice(corpus)]
+    corpus = input_corpus.corpus  # seed_corpus: a list of numpy arrays
+    reservoir = corpus[-5:] + [random.choice(corpus)]  # why -5, answer: can modify it, list append
     choice = random.choice(reservoir)
     return choice
