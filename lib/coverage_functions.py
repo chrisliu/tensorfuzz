@@ -35,7 +35,9 @@ def all_logit_coverage_function(coverage_batches):
     coverage_list = []
     for idx in range(coverage_batch.shape[0]):
         elt = coverage_batch[idx]
-        elt = np.expand_dims(np.sum(np.abs(elt)), 0)
+        # why use absolute values, if changed, the results will be worse
+        elt = np.expand_dims(np.max(np.abs(elt)), 0)  # better?
+        # elt = np.expand_dims(np.sum(np.abs(elt)), 0)
         coverage_list.append(elt)
     return coverage_list
 
