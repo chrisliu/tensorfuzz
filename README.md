@@ -7,21 +7,24 @@ Any suggestions about how to make it more useful for that purpose would be appre
 
 ## Installation
 
-You ought to be able to run the code in this repository by doing the following:
+Setup the necessary libraries with the `setup.sh` script.
 
-```
-pip install -r requirements.txt
+```bash
+./setup.sh
 ```
 
-Then do:
+This will create a virtual environment `.venv` that will hold the necessary
+python libraries.
 
-```
-export PYTHONPATH="$PYTHONPATH:$HOME/tensorfuzz"
+To enter the environment, run the following command.
+
+```bash
+. envs.sh
 ```
 
 ## The structure of this repository
 
-Broadly speaking, this repository contains a core fuzzing library, examples of how 
+Broadly speaking, this repository contains a core fuzzing library, examples of how
 to use the fuzzer, a list of bugs found with the fuzzer, and some utilities.
 
 ### /bugs
@@ -39,12 +42,14 @@ and their quantized versions.
 
 This directoy contains the fuzzing engine and all the necessary utils.
 
-### /third_party
+### /third\_party
 
-This directory contains code written by other people and the (potentially updated) 
-LICENSES for that code. 
- 
+This directory contains code written by other people and the (potentially updated)
+LICENSES for that code.
 
 ## Disclaimers
 
 This is not an officially supported Google product.
+
+```
+```
