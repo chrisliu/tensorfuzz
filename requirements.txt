@@ -2,4 +2,4 @@ numpy
 absl-py
 tensorflow-cpu==2.1.0
 scipy
-pyflann
+pyflann-py3
