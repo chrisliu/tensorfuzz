@@ -78,3 +78,70 @@ def do_basic_mutations(
     else:
         mutated_batches = [mutated_image_batch]
     return mutated_batches
+
+def get_rand_char(rand_num_gen):
+  return chr(97 + rand_num_gen.integers(0, 26))
+
+def add_rand_char(text, rand_num_gen):
+  rand_char = get_rand_char(rand_num_gen)
+  # Include index past last char so we can add new char at end.
+  rand_loc = rand_num_gen.integers(0, len(text), endpoint=True)
+  return text[:rand_loc] + rand_char + text[rand_loc:]
+
+def del_rand_char(text, rand_num_gen):
+  rand_loc = rand_num_gen.integers(0, len(text))
+  return text[:rand_loc] + text[rand_loc+1:]
+
+def sub_rand_char(text, rand_num_gen):
+  rand_char = get_rand_char(rand_num_gen)
+  rand_loc = rand_num_gen.integers(0, len(text))
+  return text[:rand_loc] + rand_char + text[rand_loc+1:]
+
+def do_mutation(text, rand_gen):
+  mutation_options = [add_rand_char, del_rand_char, sub_rand_char]
+  mutation = rand_gen.choice(mutation_options)
+  return mutation(text, rand_gen)
+
+def do_basic_text_mutations(
+    corpus_element, mutations_count, constraint=None, a_min=-1.0, a_max=1.0
+):
+    """
+    Mutates text inputs by performing one of the following actions at random:
+    * Add random character at random location
+    * Delete character at random location
+    * Replace character at random location
+
+  Args:
+    corpus_element: A CorpusElement object. It's assumed in this case that
+      corpus_element.data[0] is a string
+      corput_element.data[1] is a label or something we *don't* want to change.
+    mutations_count: Integer representing number of mutations to do in
+      parallel.
+    constraint: Unused
+    a_max: Unused
+    a_min: Unused
+    (last three kept so the API is consistent for all mutation functions)
+
+  Returns:
+    A list of batches, the first of which is mutated strings and the second of
+    which is passed through the function unchanged (because they are
+    labels or something that we never intended to mutate).
+  """
+    # Here we assume the corpus.data is of the form (text, label)
+    # We never mutate the label.
+    if len(corpus_element.data) > 1:
+        text, label = corpus_element.data
+        text_batch = np.tile(text, mutations_count)
+    else:
+        text = corpus_element.data[0]
+        text_batch = np.tile(text, mutations_count)
+
+    rand_gen = np.random.default_rng()
+    mutated_text_batch = np.array([do_mutation(t, rand_gen) for t in text_batch])
+
+    if len(corpus_element.data) > 1:
+        label_batch = np.tile(label, mutations_count)
+        mutated_batches = [mutated_text_batch, label_batch]
+    else:
+        mutated_batches = [mutated_text_batch]
+    return mutated_batches
